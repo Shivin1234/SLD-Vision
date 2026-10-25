@@ -55,7 +55,7 @@ CLASS_NAMES = {
 class RTDETRWrapper(nn.Module):
     def __init__(self):
         super().__init__()
-        ckpt_path = os.path.join(CURRENT_DIR, "best.pth")
+        ckpt_path = os.path.join(CURRENT_DIR, "models", "rtdetrv2_sld.pth")
         cfg_path = os.path.join(CURRENT_DIR, "config_used.yml")
         
         assert os.path.exists(ckpt_path), f"Weight file {ckpt_path} not found!"
@@ -174,3 +174,4 @@ def run_rtdetrv2_inference(model, image: Image.Image, threshold: float = 0.3, zo
             "box": [round(coord, 1) for coord in b]
         })
     return {"detections": detections}
+
