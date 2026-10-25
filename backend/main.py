@@ -27,41 +27,81 @@ models = {}
 
 @app.on_event("startup")
 async def load_all_models():
-    """Loads all 4 models into memory on server startup to avoid reloading per request."""
+    """Load available models into memory at startup."""
     print("🚀 Initializing AI models on startup...")
-    
+
     # 1. Faster R-CNN
     try:
-        frcnn_path = os.path.join(os.path.dirname(__file__), "models", "faster_rcnn_sld.pth")
+        frcnn_path = os.path.join(
+            os.path.dirname(__file__), "models", "faster_rcnn_sld.pth"
+        )
         if os.path.exists(frcnn_path):
-            models["frcnn"] = frcnn.load_model()
-            print("✅ Faster R-CNN loaded.")
+            model = frcnn.load_model()
+            if model is not None:
+                models["frcnn"] = model
+                print("✅ Faster R-CNN loaded.")
+            else:
+                print("⚠️ Faster R-CNN loader returned None.")
+        else:
+            print(f"⚠️ Faster R-CNN checkpoint not found: {frcnn_path}")
     except Exception as e:
         print(f"⚠️ Failed to load Faster R-CNN: {e}")
+        traceback.print_exc()
 
     # 2. RetinaNet
     try:
-        retinanet_path = os.path.join(os.path.dirname(__file__), "best_v3.pth")
+        retinanet_path = os.path.join(
+            os.path.dirname(__file__), "models", "retinanet_sld.pth"
+        )
         if os.path.exists(retinanet_path):
-            models["retinanet"] = RetinaNet.load_model(retinanet_path, DEVICE)
-            print("✅ RetinaNet loaded.")
+            model = RetinaNet.load_model(retinanet_path, DEVICE)
+            if model is not None:
+                models["retinanet"] = model
+                print("✅ RetinaNet loaded.")
+            else:
+                print("⚠️ RetinaNet loader returned None.")
+        else:
+            print(f"⚠️ RetinaNet checkpoint not found: {retinanet_path}")
     except Exception as e:
         print(f"⚠️ Failed to load RetinaNet: {e}")
+        traceback.print_exc()
 
     # 3. RT-DETR (SAHI)
     try:
-        if Rtdetr.rtdetr_model is not None:
-            models["rtdetr_sahi"] = Rtdetr.rtdetr_model
-            print("✅ RT-DETR (SAHI) loaded.")
+        rtdetr_path = os.path.join(
+            os.path.dirname(__file__), "models", "rtdetr_sld.pt"
+        )
+        if os.path.exists(rtdetr_path):
+            if Rtdetr.rtdetr_model is not None:
+                models["rtdetr_sahi"] = Rtdetr.rtdetr_model
+                print("✅ RT-DETR (SAHI) loaded.")
+            else:
+                print("⚠️ RT-DETR checkpoint exists, but model loading failed.")
+        else:
+            print(f"⚠️ RT-DETR checkpoint not found: {rtdetr_path}")
     except Exception as e:
         print(f"⚠️ Failed to load RT-DETR (SAHI): {e}")
+        traceback.print_exc()
 
     # 4. RT-DETRv2
     try:
-        models["rtdetrv2"] = RTDETRV2.load_rtdetrv2()
-        print("✅ RT-DETRv2 loaded.")
+        rtdetrv2_path = os.path.join(
+            os.path.dirname(__file__), "models", "rtdetrv2_sld.pth"
+        )
+        if os.path.exists(rtdetrv2_path):
+            model = RTDETRV2.load_rtdetrv2()
+            if model is not None:
+                models["rtdetrv2"] = model
+                print("✅ RT-DETRv2 loaded.")
+            else:
+                print("⚠️ RT-DETRv2 loader returned None.")
+        else:
+            print(f"⚠️ RT-DETRv2 checkpoint not found: {rtdetrv2_path}")
     except Exception as e:
         print(f"⚠️ Failed to load RT-DETRv2: {e}")
+        traceback.print_exc()
+
+    print("Available models:", list(models.keys()))
 
 
 @app.get("/")
@@ -103,16 +143,30 @@ async def predict_sld(
             detections = res.get("detections", [])
 
         elif model_type == "frcnn":
-            raw_dets = frcnn.predict_image(models["frcnn"], image, confidence_threshold=0.3)
+            raw_dets = frcnn.predict_image_tiled(
+                models["frcnn"],
+                image,
+                confidence_threshold=0.30,
+                tile_size=800,
+                overlap=0.2,
+                iou_threshold=0.5,
+            )
+
             for idx, d in enumerate(raw_dets):
-                box_coords = [d["box"]["x1"], d["box"]["y1"], d["box"]["x2"], d["box"]["y2"]]
+                box_coords = [
+                    d["box"]["x1"],
+                    d["box"]["y1"],
+                    d["box"]["x2"],
+                    d["box"]["y2"],
+                ]
+
                 detections.append({
                     "id": idx + 1,
                     "class_id": d["class_id"],
                     "code": d["class_name"][:4],
                     "name": d["class_name"],
                     "confidence": d["confidence"],
-                    "box": box_coords
+                    "box": box_coords,
                 })
 
         elif model_type == "retinanet":
