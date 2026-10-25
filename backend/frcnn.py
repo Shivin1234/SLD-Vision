@@ -94,6 +94,96 @@ def predict_image(model, image: Image.Image, confidence_threshold: float = 0.0):
 
     return detections
 
+def predict_image_tiled(
+    model,
+    image: Image.Image,
+    confidence_threshold: float = 0.05,
+    tile_size: int = 800,
+    overlap: float = 0.2,
+    iou_threshold: float = 0.5,
+):
+    import math
+    from torchvision.ops import nms
+
+    image = image.convert("RGB")
+    width, height = image.size
+    detections = []
+
+    stride = max(1, int(tile_size * (1 - overlap)))
+
+    def get_starts(length):
+        if length <= tile_size:
+            return [0]
+
+        starts = list(range(0, length - tile_size + 1, stride))
+        last = length - tile_size
+
+        if starts[-1] != last:
+            starts.append(last)
+
+        return starts
+
+    tile_id = 0
+
+    for y0 in get_starts(height):
+        for x0 in get_starts(width):
+            x1 = min(x0 + tile_size, width)
+            y1 = min(y0 + tile_size, height)
+
+            tile = image.crop((x0, y0, x1, y1))
+            tile_detections = predict_image(
+                model,
+                tile,
+                confidence_threshold=confidence_threshold,
+            )
+
+            for detection in tile_detections:
+                box = detection["box"]
+
+                detections.append({
+                    **detection,
+                    "box": {
+                        "x1": box["x1"] + x0,
+                        "y1": box["y1"] + y0,
+                        "x2": box["x2"] + x0,
+                        "y2": box["y2"] + y0,
+                    },
+                    "_tile_id": tile_id,
+                })
+
+            tile_id += 1
+
+    if not detections:
+        return []
+
+    # Remove duplicate boxes from overlapping tiles, class by class.
+    kept = []
+
+    for class_id in sorted({d["class_id"] for d in detections}):
+        class_dets = [d for d in detections if d["class_id"] == class_id]
+
+        boxes = torch.tensor([
+            [
+                d["box"]["x1"], d["box"]["y1"],
+                d["box"]["x2"], d["box"]["y2"],
+            ]
+            for d in class_dets
+        ], dtype=torch.float32)
+
+        scores = torch.tensor(
+            [d["confidence"] for d in class_dets],
+            dtype=torch.float32,
+        )
+
+        indices = nms(boxes, scores, iou_threshold)
+
+        kept.extend(class_dets[i] for i in indices.tolist())
+
+    for i, detection in enumerate(kept, start=1):
+        detection["id"] = i
+        detection.pop("_tile_id", None)
+
+    return kept
 
 if __name__ == "__main__":
     print("Loading trained Faster R-CNN...")
@@ -105,4 +195,5 @@ if __name__ == "__main__":
 
     for label_id, class_name in enumerate(CLASS_NAMES):
         print(f"{label_id}: {class_name}")
+
 
