@@ -1,4 +1,3 @@
-
 # ==============================================================================
 # SLD CAD AI BACKEND (FastAPI + RT-DETR SAHI Sliced Inference)
 # ==============================================================================
@@ -45,7 +44,8 @@ SHORT_TAGS = {
 # 2. Load RT-DETR Model on Startup
 # ------------------------------------------------------------------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-RTDETR_MODEL_PATH = os.path.join(BASE_DIR, "best.pt")
+
+RTDETR_MODEL_PATH = os.path.join(BASE_DIR, "models", "rtdetr_sld.pt")
 
 print(f"[INFO] Computing device: {str(device).upper()}")
 
@@ -55,7 +55,7 @@ if os.path.exists(RTDETR_MODEL_PATH):
     rtdetr_model = AutoDetectionModel.from_pretrained(
         model_type="yolov8",
         model_path=RTDETR_MODEL_PATH,
-        confidence_threshold=0.45,
+        confidence_threshold=0.30,
         device=str(device)
     )
     print("[OK] RT-DETR Model loaded successfully!")
@@ -194,3 +194,4 @@ def detect_symbols(file: UploadFile = File(...)):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8080, reload=True)
+
