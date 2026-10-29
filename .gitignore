@@ -1,0 +1,22 @@
+# Database credentials and environment files
+.env
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
+
+# Python environments and cache
+.venv/
+.venv310/
+venv/
+__pycache__/
+*.pyc
+
+# Frontend dependencies and build output
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+
+# Logs
+*.log
