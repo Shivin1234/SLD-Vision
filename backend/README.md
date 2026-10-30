@@ -1,1 +1,0 @@
-# SLD-Vision
