@@ -1,0 +1,108 @@
+/* Sidebar + page layout classes used by VoltAI_App_updated.jsx. */
+.voltai-shell {
+  width: 100%;
+  min-height: 100vh;
+  align-items: stretch;
+  background: #f8fafc;
+}
+
+.voltai-sidebar {
+  flex: 0 0 248px;
+  align-self: flex-start;
+  min-height: 100vh;
+  z-index: 20;
+}
+
+.voltai-nav {
+  width: 100%;
+  text-align: left;
+  transition: background-color 0.18s ease, color 0.18s ease;
+}
+
+.voltai-nav:hover {
+  background: #eff6ff !important;
+}
+
+.voltai-row {
+  transition: background-color 0.15s ease;
+}
+
+.voltai-row:hover {
+  background: #f8fafc;
+}
+
+.voltai-shell main,
+.voltai-shell section,
+.voltai-shell article {
+  min-width: 0;
+}
+
+.voltai-topbar {
+  width: 100%;
+}
+
+.voltai-main-grid {
+  width: 100%;
+}
+
+.voltai-stats {
+  width: 100%;
+}
+
+/* Avoid global centering from the Vite starter affecting page content. */
+#center,
+#next-steps,
+#docs,
+#spacer,
+.hero,
+.counter,
+.ticks {
+  all: unset;
+}
+
+@media (max-width: 1100px) {
+  .voltai-sidebar {
+    flex-basis: 220px;
+    width: 220px !important;
+    padding: 20px 12px !important;
+  }
+
+  .voltai-main-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .voltai-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .voltai-shell {
+    flex-direction: column !important;
+  }
+
+  .voltai-sidebar {
+    position: static !important;
+    width: 100% !important;
+    min-height: auto !important;
+    height: auto !important;
+    flex-basis: auto;
+    border-right: 0 !important;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .voltai-topbar {
+    align-items: flex-start !important;
+    flex-direction: column !important;
+  }
+
+  .voltai-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .voltai-stats {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
