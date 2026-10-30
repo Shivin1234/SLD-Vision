@@ -1,0 +1,12 @@
+  * [33m527b93c[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m Add SLD Vision project
+* [33m9565f2b[m[33m ([m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m Refactor CSS for VoltAI layout and components
+* [33mb5d0c7f[m Import app.css in main.jsx
+* [33m6cb15ee[m Refactor CSS variables and global styles
+* [33m0f5f93e[m Updated
+* [33m9a07eb8[m Enhance RetinaNet with tiled inference support
+* [33maf588c7[m Add frontend application
+* [33m62175d1[m Update checkpoint path for RTDETRWrapper
+* [33me6fd6f9[m Update RT-DETR model path and confidence threshold
+* [33mc4aae44[m Implement tiled image prediction function
+* [33mdf65e21[m Improve model loading and inference structure
+* [33mf91320e[m Create RTDETRV2 weights and other files
