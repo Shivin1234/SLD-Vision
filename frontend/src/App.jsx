@@ -1,4 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import Dashboard from "./pages/Dashboard";
+import CompareModels from "./pages/CompareModels";
+import History from "./pages/History";
 
 const MODELS = [
   { id: "rtdetrv2", label: "RT-DETRv2", color: "#0284c7", icon: "⚡", description: "Transformer detector" },
@@ -113,6 +116,12 @@ function CroppedSymbolCanvas({ previewUrl, box, compColor, width = 300, height =
 
 export default function App() {
   const [page, setPage] = useState("dashboard");
+  const [historyItems, setHistoryItems] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState("");
+  const [dashboardView, setDashboardView] = useState("analysis");
+  const [compareView, setCompareView] = useState("analysis");
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -152,6 +161,26 @@ export default function App() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
+
+  useEffect(() => {
+    if (page !== "history") return;
+    let cancelled = false;
+    setHistoryLoading(true);
+    setHistoryError("");
+    fetch("/api/history")
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`History API returned ${response.status}. Configure GET /api/history on the backend to read saved runs from your database.`);
+        return response.json();
+      })
+      .then((payload) => {
+        if (cancelled) return;
+        const rows = Array.isArray(payload) ? payload : (payload.history || payload.items || payload.results || []);
+        setHistoryItems(rows);
+      })
+      .catch((error) => { if (!cancelled) { setHistoryItems([]); setHistoryError(error.message || "Unable to load detection history."); } })
+      .finally(() => { if (!cancelled) setHistoryLoading(false); });
+    return () => { cancelled = true; };
+  }, [page]);
 
   const resetViewState = () => {
     setSelectedCategoryFilter("ALL");
@@ -295,29 +324,59 @@ export default function App() {
   };
 
   const resultForBom = compareResult ? (compareResult.models[bomActiveModel] || result) : result;
-  const pageTitle = page === "dashboard" ? "Dashboard" : page === "compare" ? "Compare models" : "BOM & Export";
+  const pageTitle = page === "dashboard" ? "Detection workspace" : page === "compare" ? "Model laboratory" : "Detection history";
   const pageSubtitle = page === "dashboard"
-    ? "Run an individual detector and inspect its SLD predictions."
+    ? "Inspect electrical symbols, confidence scores, and bill of materials."
     : page === "compare"
-      ? "Run all four models on the same drawing and compare their outputs."
-      : "Review model-specific component quantities and confidence scores.";
+      ? "Benchmark four detectors against the same single-line diagram."
+      : "Review previous analyses saved by the backend database.";
 
-  const card = { background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, boxShadow: "0 3px 12px rgba(15,23,42,0.04)" };
+  const card = { background: "rgba(255,255,255,0.96)", border: "1px solid #e5eaf2", borderRadius: 18, boxShadow: "0 8px 24px rgba(15,23,42,0.045), 0 1px 2px rgba(15,23,42,0.025)" };
   const muted = { color: "#64748b" };
   const sectionTitle = { margin: 0, fontSize: 15, fontWeight: 800, color: "#0f172a" };
+  const pageProps = {
+    MODELS, getColor, activeModelColor, Button, TabBar, Metric, pillStyle,
+    card, muted, sectionTitle, tableStyle, thStyle, tdStyle,
+    page, setPage,
+    historyItems, historyLoading, historyError, setHistoryError,
+    dashboardView, setDashboardView, compareView, setCompareView,
+    file, preview, loading, selectedModel, setSelectedModel,
+    result, setResult, compareResult, setCompareResult,
+    compareActiveTab, setCompareActiveTab, selectedCompareClass, setSelectedCompareClass,
+    bomActiveModel, setBomActiveModel,
+    minConfidence, setMinConfidence, showBoxes, setShowBoxes,
+    zoomLevel, setZoomLevel, compareZoom, setCompareZoom,
+    selectedCategoryFilter, setSelectedCategoryFilter,
+    hoveredDetection, setHoveredDetection, hoveredCategory, setHoveredCategory,
+    selectedDetectionIndex, setSelectedDetectionIndex,
+    isFullscreen, setIsFullscreen, imageRef, viewportRef, filteredDetections,
+    handleFileChange, handleRunDetection, resetViewState, selectCompareModel,
+    downloadCSV, downloadAnnotatedImage
+  };
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f5f8fc", color: "#0f172a", fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: "#f3f6fb", color: "#0f172a", fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" }}>
       <style>{`
         * { box-sizing: border-box; }
         button, input { font: inherit; }
+        button { -webkit-tap-highlight-color: transparent; }
         button:focus-visible, input:focus-visible { outline: 3px solid #bae6fd; outline-offset: 2px; }
-        .voltai-nav:hover { background: #eff6ff !important; }
-        .voltai-row:hover { background: #f8fafc; }
+        button { transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease; }
+        button:active { transform: translateY(1px); }
+        .voltai-nav:hover { background: #102b4c !important; color: #ffffff !important; }
+        .voltai-row:hover { background: #f5f9ff; }
+        .voltai-chart-card { transition: transform 180ms ease, box-shadow 180ms ease; }
+        .voltai-chart-card:hover { transform: translateY(-2px); box-shadow: 0 12px 26px rgba(15,23,42,.07); }
+        .voltai-tabbar { position: sticky; top: 8px; z-index: 30; backdrop-filter: blur(16px); }
+        input[type="range"] { accent-color: #0284c7; }
+        input[type="file"] { border-radius: 12px !important; }
+        table { border-collapse: separate; border-spacing: 0; }
+        th { background: #f8fafc; }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; } }
         @media (max-width: 900px) {
           .voltai-shell { flex-direction: column !important; }
-          .voltai-sidebar { width: 100% !important; position: static !important; }
           .voltai-main-grid { grid-template-columns: 1fr !important; }
+          .voltai-compare-chart-grid, .voltai-compare-image-grid { grid-template-columns: 1fr !important; }
           .voltai-stats { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
           .voltai-topbar { align-items: flex-start !important; flex-direction: column !important; }
         }
@@ -327,39 +386,40 @@ export default function App() {
       `}</style>
 
       <div className="voltai-shell" style={{ display: "flex", minHeight: "100vh" }}>
-        <aside className="voltai-sidebar" style={{ width: 248, flexShrink: 0, background: "#fff", borderRight: "1px solid #e2e8f0", padding: "24px 16px", display: "flex", flexDirection: "column", position: "sticky", top: 0, height: "100vh" }}>
+        {sidebarOpen && <aside className="voltai-sidebar" style={{ width: 248, flexShrink: 0, background: "#06162b", color: "#f8fafc", borderRight: "1px solid #020b16", padding: "24px 16px", display: "flex", flexDirection: "column", position: "sticky", top: 0, height: "100vh", overflowY: "auto" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 11, padding: "0 8px 28px" }}>
             <div style={{ width: 42, height: 42, display: "grid", placeItems: "center", borderRadius: 12, color: "#fff", fontSize: 22, background: "linear-gradient(135deg,#0284c7,#38bdf8)" }}>⚡</div>
             <div>
-              <div style={{ fontWeight: 900, fontSize: 17, letterSpacing: "-.4px" }}>VoltAI</div>
-              <div style={{ fontSize: 10, color: "#64748b", marginTop: 2 }}>SLD SYMBOL INTELLIGENCE</div>
+              <div style={{ fontWeight: 900, fontSize: 17, letterSpacing: "-.4px", color: "#f8fafc" }}>VoltAI</div>
+              <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 2 }}>SLD SYMBOL INTELLIGENCE</div>
             </div>
           </div>
-          <div style={{ color: "#94a3b8", fontSize: 10, fontWeight: 800, letterSpacing: 1, padding: "0 12px 10px" }}>WORKSPACE</div>
+          <div style={{ color: "#8194ad", fontSize: 10, fontWeight: 800, letterSpacing: 1, padding: "0 12px 10px" }}>WORKSPACE</div>
           {[
             { id: "dashboard", icon: "▦", label: "Dashboard" },
             { id: "compare", icon: "⇄", label: "Compare Models" },
-            { id: "bom", icon: "▤", label: "BOM & Export" },
+            { id: "history", icon: "◷", label: "History" },
           ].map((item) => (
             <button key={item.id} className="voltai-nav" onClick={() => setPage(item.id)} style={{
               display: "flex", alignItems: "center", gap: 12, width: "100%", textAlign: "left", border: 0,
               padding: "12px 14px", marginBottom: 5, borderRadius: 10, cursor: "pointer",
-              color: page === item.id ? "#0369a1" : "#475569", background: page === item.id ? "#e0f2fe" : "transparent",
+              color: page === item.id ? "#ffffff" : "#cbd5e1", background: page === item.id ? "#12365d" : "transparent",
               fontWeight: page === item.id ? 800 : 600, fontSize: 13,
             }}>
               <span style={{ fontSize: 18, width: 22, textAlign: "center" }}>{item.icon}</span>{item.label}
-              {page === item.id && <span style={{ marginLeft: "auto", width: 6, height: 6, borderRadius: 99, background: "#0284c7" }} />}
+              {page === item.id && <span style={{ marginLeft: "auto", width: 6, height: 6, borderRadius: 99, background: "#38bdf8" }} />}
             </button>
           ))}
-          <div style={{ marginTop: "auto", padding: "15px 13px", borderRadius: 14, background: "linear-gradient(145deg,#f8fbff,#eff6ff)", border: "1px solid #dbeafe", boxShadow: "0 4px 14px rgba(2,132,199,0.06)" }}>
+          <div style={{ marginTop: "auto", padding: "15px 13px", borderRadius: 14, background: "#0c2340", border: "1px solid #1e3a5f", boxShadow: "0 4px 14px rgba(0,0,0,0.2)" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ width: 9, height: 9, background: "#10b981", borderRadius: 99, boxShadow: "0 0 0 3px #d1fae5" }} />
-              <span style={{ fontSize: 12, fontWeight: 850, color: "#0f172a" }}>4 detection models</span>
-              <span style={{ marginLeft: "auto", fontSize: 9, fontWeight: 900, letterSpacing: ".4px", color: "#0369a1", background: "#dbeafe", borderRadius: 5, padding: "3px 5px" }}>READY</span>
+              <span style={{ fontSize: 12, fontWeight: 850, color: "#f1f5f9" }}>4 detection models</span>
+              <span style={{ marginLeft: "auto", fontSize: 9, fontWeight: 900, letterSpacing: ".4px", color: "#bae6fd", background: "#12365d", borderRadius: 5, padding: "3px 5px" }}>READY</span>
             </div>
-            <p style={{ color: "#64748b", fontSize: 11, lineHeight: 1.55, margin: "10px 0 0" }}>Upload a schematic, inspect detections, and export model-specific BOMs.</p>
+            <p style={{ color: "#a9bad0", fontSize: 11, lineHeight: 1.55, margin: "10px 0 0" }}>Analyze schematics, compare detectors, and revisit saved runs.</p>
           </div>
-        </aside>
+        </aside>}
+        <button type="button" onClick={() => setSidebarOpen((open) => !open)} title={sidebarOpen ? "Hide sidebar" : "Show sidebar"} aria-label={sidebarOpen ? "Hide sidebar" : "Show sidebar"} style={{position: "fixed",top: "50%",transform: "translateY(-50%)",left: sidebarOpen ? 232 : 0,zIndex: 1000,width: 32,height: 42,display: "grid",placeItems: "center",border: "1px solid rgba(30, 58, 95, 0.65)",borderLeft: 0,borderRadius: "0 9px 9px 0",background: "rgba(2, 13, 28, 0.65)",color: "rgba(226, 232, 240, 0.8)",boxShadow: "0 3px 12px rgba(0,0,0,0.18)",cursor: "pointer",fontSize: 22,transition: "left 180ms ease, background 180ms ease"}}>{sidebarOpen ? "‹" : "›"}</button>
 
         <main style={{ minWidth: 0, flex: 1, padding: "28px clamp(16px, 3vw, 38px) 44px" }}>
           <header className="voltai-topbar" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 20, marginBottom: 24 }}>
@@ -370,288 +430,15 @@ export default function App() {
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               <span style={{ border: "1px solid #bbf7d0", color: "#047857", background: "#f0fdf4", borderRadius: 99, padding: "7px 11px", fontSize: 11, fontWeight: 800 }}>● SLD Vision Workspace</span>
-              {result && <span style={{ border: "1px solid #dbeafe", color: "#1d4ed8", background: "#eff6ff", borderRadius: 99, padding: "7px 11px", fontSize: 11, fontWeight: 800 }}>{result.model_name}</span>}
+              {page === "dashboard" && result && (<span style={{border: "1px solid #dbeafe",color: "#1d4ed8",background: "#eff6ff",borderRadius: 99,padding: "7px 11px",fontSize: 11,fontWeight: 800}}>{result.model_name}</span>)}
             </div>
           </header>
 
-          {/* Dashboard: individual model detection and original interactive SLD viewer */}
-          {page === "dashboard" && <>
-            <section style={{ ...card, padding: 18, marginBottom: 18 }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 15 }}>
-                <div>
-                  <h2 style={sectionTitle}>Detection setup</h2>
-                  <p style={{ ...muted, fontSize: 12, margin: "5px 0 0" }}>Choose one model for an individual analysis. Compare all four on the Compare Models page.</p>
-                </div>
-                <label style={{ fontSize: 12, color: "#64748b", fontWeight: 700 }}>SLD image
-                  <input type="file" accept="image/*" onChange={handleFileChange} style={{ display: "block", marginTop: 7, maxWidth: 300, width: "100%", padding: 9, border: "1px solid #bae6fd", borderRadius: 10, background: "#f0f9ff", color: "#334155", fontSize: 12, cursor: "pointer" }} />
-                </label>
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(165px,1fr))", gap: 10, marginBottom: 15 }}>
-                {MODELS.map((model) => <button key={model.id} onClick={() => { setSelectedModel(model.id); setResult(null); setCompareResult(null); resetViewState(); }} style={{
-                  textAlign: "left", padding: 13, borderRadius: 11, border: selectedModel === model.id ? `2px solid ${model.color}` : "1px solid #e2e8f0",
-                  background: selectedModel === model.id ? `${model.color}0d` : "#fff", cursor: "pointer"
-                }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontSize: 18 }}>{model.icon}</span>
-                    <span style={{ fontWeight: 800, fontSize: 12, color: "#1e293b" }}>{model.label}</span>
-                  </div>
-                  <div style={{ fontSize: 11, ...muted, marginTop: 7 }}>{model.description}</div>
-                </button>)}
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 13, flexWrap: "wrap" }}>
-                <Button onClick={handleRunDetection} disabled={!file || loading}>{loading ? "⏳ Running detection…" : `▶ Run ${MODELS.find((m) => m.id === selectedModel)?.label || "model"} detection`}</Button>
-                <span style={{ ...muted, fontSize: 12 }}>{file ? `Selected: ${file.name}` : "Choose a JPG, PNG, or other browser-supported image."}</span>
-              </div>
-            </section>
+          {/* Page content is split into dedicated components; all behavior remains in App.jsx. */}
+          {page === "dashboard" && <Dashboard {...pageProps} />}
+          {page === "compare" && <CompareModels {...pageProps} />}
+          {page === "history" && <History {...pageProps} />}
 
-            {result && <>
-              <div className="voltai-stats" style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 12, marginBottom: 18 }}>
-                {[
-                  ["Detected symbols", result.total, "#0284c7"],
-                  ["Unique classes", result.bom.length, "#059669"],
-                  ["Request time", `${(result.latency_ms / 1000).toFixed(2)} s`, "#7c3aed"],
-                  ["Image dimensions", `${result.width} × ${result.height}`, "#d97706"],
-                ].map(([label, value, color]) => <div key={label} style={{ ...card, padding: 16 }}>
-                  <div style={{ fontSize: 11, color: "#64748b", fontWeight: 800 }}>{label}</div>
-                  <div style={{ color, fontSize: 24, fontWeight: 900, marginTop: 8, overflowWrap: "anywhere" }}>{value}</div>
-                </div>)}
-              </div>
-              <div style={{ ...card, padding: 16, marginBottom: 18 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 14 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-                    <label style={{ fontSize: 12, fontWeight: 800, color: "#475569" }}>Confidence threshold <strong style={{ color: "#0284c7" }}>{minConfidence}%</strong>
-                      <input aria-label="Confidence threshold" type="range" min="0" max="95" step="1" value={minConfidence} onChange={(e) => { setMinConfidence(Number(e.target.value)); setSelectedDetectionIndex(null); }} style={{ display: "block", width: 210, accentColor: "#0284c7", marginTop: 7 }} />
-                    </label>
-                    <label style={{ display: "flex", gap: 7, alignItems: "center", fontSize: 12, fontWeight: 700, color: "#475569" }}><input type="checkbox" checked={showBoxes} onChange={(e) => setShowBoxes(e.target.checked)} /> Bounding boxes</label>
-                    <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                      <Button variant="secondary" onClick={() => setZoomLevel((z) => Math.max(0.5, Number((z - 0.25).toFixed(2))))}>−</Button>
-                      <span style={{ fontSize: 12, fontWeight: 800, minWidth: 42, textAlign: "center" }}>{Math.round(zoomLevel * 100)}%</span>
-                      <Button variant="secondary" onClick={() => setZoomLevel((z) => Math.min(3, Number((z + 0.25).toFixed(2))))}>+</Button>
-                      <Button variant="secondary" onClick={() => setZoomLevel(1)}>Reset</Button>
-                    </div>
-                  </div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <Button variant="secondary" onClick={() => setIsFullscreen(true)}>⛶ Fullscreen viewer</Button>
-                    <Button variant="secondary" onClick={() => downloadAnnotatedImage(result)}>↓ Annotated image</Button>
-                    <Button variant="success" onClick={() => downloadCSV(result)}>↓ Export BOM CSV</Button>
-                  </div>
-                </div>
-                <div style={{ marginTop: 16, display: "flex", gap: 7, flexWrap: "wrap" }}>
-                  <button onClick={() => setSelectedCategoryFilter("ALL")} style={pillStyle(selectedCategoryFilter === "ALL", "#0284c7")}>All ({result.detections.length})</button>
-                  {result.bom.map((item) => <button key={item.component} onClick={() => setSelectedCategoryFilter(selectedCategoryFilter === item.component ? "ALL" : item.component)} style={pillStyle(selectedCategoryFilter === item.component, getColor(item.component))}>{item.component} ({item.quantity})</button>)}
-                </div>
-              </div>
-              <div className="voltai-main-grid" style={{ display: "grid", gridTemplateColumns: "minmax(0,1.65fr) minmax(320px,0.9fr)", gap: 18, alignItems: "start" }}>
-                <section style={{ ...card, overflow: "hidden" }}>
-                  <div style={{ padding: "15px 17px", borderBottom: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-                    <h2 style={sectionTitle}>Schematic visualizer</h2>
-                    <span style={{ fontSize: 12, fontWeight: 800, color: "#059669" }}>{filteredDetections.length} of {result.total} displayed · click a box to inspect</span>
-                  </div>
-                  <div ref={viewportRef} style={{ maxHeight: isFullscreen ? "none" : "72vh", overflow: "auto", padding: 12, background: "#f8fafc" }}>
-                    <div style={{ position: "relative", display: "inline-block", minWidth: "100%", transform: `scale(${zoomLevel})`, transformOrigin: "top left" }}>
-                      <img ref={imageRef} src={preview} alt="Uploaded SLD drawing" style={{ display: "block", width: "100%", height: "auto", border: "1px solid #e2e8f0" }} />
-                      {showBoxes && filteredDetections.map((det, idx) => {
-                        const color = getColor(det.name);
-                        const hovered = hoveredDetection === idx || hoveredCategory === det.name;
-                        const nearTop = det.box.y < result.height * 0.15;
-                        return <div key={`${det.id}-${idx}`} role="button" tabIndex={0} title="Click to inspect symbol" onClick={() => setSelectedDetectionIndex(idx)} onKeyDown={(e) => { if (e.key === "Enter") setSelectedDetectionIndex(idx); }} onMouseEnter={() => setHoveredDetection(idx)} onMouseLeave={() => setHoveredDetection(null)} style={{
-                          position: "absolute", left: `${det.box.x / result.width * 100}%`, top: `${det.box.y / result.height * 100}%`,
-                          width: `${det.box.w / result.width * 100}%`, height: `${det.box.h / result.height * 100}%`,
-                          border: `${hovered ? 3 : 1.5}px solid ${color}`, background: hovered ? `${color}30` : `${color}12`,
-                          cursor: "pointer", zIndex: hovered ? 20 : 2, boxSizing: "border-box"
-                        }}>
-                          {hovered && <div style={{ position: "absolute", [nearTop ? "top" : "bottom"]: "calc(100% + 5px)", left: "50%", transform: "translateX(-50%)", background: "#fff", color: "#0f172a", border: `1px solid ${color}`, borderRadius: 8, padding: "8px 10px", minWidth: 170, maxWidth: 260, boxShadow: "0 8px 24px #0f172a22", fontSize: 11, whiteSpace: "normal", pointerEvents: "none", zIndex: 100 }}>
-                            <strong>{det.name}</strong><div style={{ display: "flex", justifyContent: "space-between", marginTop: 5, color: "#047857", fontWeight: 800 }}><span>Confidence</span><span>{det.confidence.toFixed(1)}%</span></div><div style={{ height: 6, background: "#e2e8f0", borderRadius: 99, overflow: "hidden", marginTop: 5 }}><div style={{ height: "100%", width: `${det.confidence}%`, background: color, borderRadius: 99 }} /></div><div style={{ color: "#64748b", marginTop: 5 }}>Click to magnify symbol</div>
-                          </div>}
-                        </div>;
-                      })}
-                    </div>
-                  </div>
-                </section>
-
-                <section style={{ ...card, overflow: "hidden" }}>
-                  <div style={{ padding: "15px 17px", borderBottom: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                    <h2 style={sectionTitle}>Bill of materials</h2>
-                    <Button variant="success" onClick={() => downloadCSV(result)}>Export CSV</Button>
-                  </div>
-                  <div style={{ padding: 16 }}>
-                    <p style={{ ...muted, fontSize: 12, lineHeight: 1.5, marginTop: 0 }}>Hover over a component to highlight its boxes. Confidence is the average model-reported confidence for that class.</p>
-                    <div style={{ overflowX: "auto" }}><table style={tableStyle}>
-                      <thead><tr><th style={thStyle}>Tag</th><th style={thStyle}>Component</th><th style={{ ...thStyle, textAlign: "right" }}>Qty</th><th style={{ ...thStyle, textAlign: "right" }}>Avg. confidence</th></tr></thead>
-                      <tbody>{result.bom.map((item) => <tr key={item.component} className="voltai-row" onMouseEnter={() => setHoveredCategory(item.component)} onMouseLeave={() => setHoveredCategory(null)} onClick={() => setSelectedCategoryFilter(item.component)} style={{ cursor: "pointer", background: hoveredCategory === item.component ? "#f0f9ff" : "#fff" }}>
-                        <td style={tdStyle}><span style={{ background: `${getColor(item.component)}15`, color: getColor(item.component), borderRadius: 5, padding: "4px 6px", fontWeight: 900, fontSize: 10 }}>{item.tag}</span></td>
-                        <td style={tdStyle}><div style={{ fontSize: 12, fontWeight: 700 }}>{item.component}</div><div style={{ height: 3, background: "#e2e8f0", borderRadius: 9, marginTop: 6, maxWidth: 130 }}><div style={{ height: 3, width: `${item.percentOfDetections}%`, background: getColor(item.component), borderRadius: 9 }} /></div></td>
-                        <td style={{ ...tdStyle, textAlign: "right", fontWeight: 900 }}>{item.quantity}</td>
-                        <td style={{ ...tdStyle, textAlign: "right", color: "#047857", fontWeight: 800 }}>{item.averageConfidence.toFixed(1)}%</td>
-                      </tr>)}
-                      <tr style={{ background: "#f8fafc" }}><td style={tdStyle}>ALL</td><td style={{ ...tdStyle, fontWeight: 900 }}>TOTAL DETECTED SYMBOLS</td><td style={{ ...tdStyle, textAlign: "right", fontWeight: 900 }}>{result.total}</td><td style={{ ...tdStyle, textAlign: "right" }}>—</td></tr></tbody>
-                    </table></div>
-                    <h3 style={{ ...sectionTitle, marginTop: 22, marginBottom: 10 }}>Individual detections</h3>
-                    <div style={{ maxHeight: 260, overflow: "auto" }}>{filteredDetections.map((det, i) => <button key={`${det.id}-${i}`} onClick={() => setSelectedDetectionIndex(i)} style={{ display: "flex", width: "100%", textAlign: "left", justifyContent: "space-between", alignItems: "center", gap: 10, border: 0, borderBottom: "1px solid #edf2f7", background: "#fff", padding: "10px 2px", cursor: "pointer" }}>
-                      <span><span style={{ color: getColor(det.name), fontWeight: 900, marginRight: 7 }}>●</span><span style={{ fontSize: 11, fontWeight: 700 }}>{det.name}</span><span style={{ display: "block", marginLeft: 18, marginTop: 3, fontSize: 10, color: "#94a3b8" }}>Detection #{det.id}</span></span>
-                      <strong style={{ fontSize: 12, color: "#047857", whiteSpace: "nowrap" }}>{det.confidence.toFixed(1)}%</strong>
-                    </button>)}</div>
-                  </div>
-                </section>
-              </div>
-            </>}
-            {!result && <div style={{ ...card, padding: "58px 22px", textAlign: "center" }}>
-              <div style={{ fontSize: 38, marginBottom: 12 }}>⌁</div><h2 style={sectionTitle}>Start with an SLD drawing</h2><p style={{ ...muted, fontSize: 13, maxWidth: 480, margin: "9px auto 0", lineHeight: 1.6 }}>Upload your single-line diagram, choose a detector, and run inference to view component boxes, confidence scores, and the generated bill of materials.</p>
-            </div>}
-          </>}
-
-          {/* Compare Models page: keeps the four-model run and benchmark metrics */}
-          {page === "compare" && <>
-            <section style={{ ...card, padding: 18, marginBottom: 18 }}>
-              <h2 style={sectionTitle}>Four-model benchmark</h2>
-              <p style={{ ...muted, fontSize: 12, margin: "6px 0 16px" }}>The same image is sent to all four model endpoints. Detection count is not the same as accuracy.</p>
-              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-                <label style={{ fontSize: 12, fontWeight: 800, color: "#475569" }}>SLD image
-                  <input type="file" accept="image/*" onChange={handleFileChange} style={{ display: "block", marginTop: 10, maxWidth: 320, width: "100%", padding: 10, border: "1px solid #7dd3fc", borderRadius: 10, background: "#f0f9ff", color: "#334155", fontSize: 12, cursor: "pointer", boxShadow: "0 1px 2px rgba(15,23,42,0.05)" }} />
-                </label>
-                
-                {file && <span style={{ fontSize: 12, ...muted }}>{file.name}</span>}
-                <Button
-                  onClick={() => handleRunDetection("compare")}
-                  disabled={!file || loading}
-                  style={{ alignSelf: "flex-end" }}
-                >
-                  {loading ? "⏳ Running comparison…" : "▶ Run comparison"}
-                </Button>
-              </div>
-            </section>
-            {compareResult ? <>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 12, marginBottom: 18 }}>
-                {MODELS.map((model) => {
-                  const r = compareResult.models[model.id];
-                  return <div key={model.id} style={{ ...card, padding: 16, borderTop: `3px solid ${model.color}` }}>
-                    <div style={{ fontSize: 12, fontWeight: 800, color: "#475569" }}>{model.icon} {model.label}</div>
-                    <div style={{ fontSize: 29, fontWeight: 900, color: model.color, marginTop: 12 }}>{r.total}</div>
-                    <div style={{ fontSize: 11, ...muted }}>detected components</div>
-                    <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", fontSize: 11 }}><span style={muted}>Unique classes</span><strong>{r.bom.length}</strong></div>
-                    <div style={{ marginTop: 6, display: "flex", justifyContent: "space-between", fontSize: 11 }}><span style={muted}>Request time</span><strong>{(r.latency_ms / 1000).toFixed(2)} s</strong></div>
-                    <Button variant={compareActiveTab === model.id ? "soft" : "secondary"} onClick={() => selectCompareModel(model.id)} style={{ width: "100%", marginTop: 13 }}>View model results</Button>
-                  </div>;
-                })}
-              </div>
-              <section style={{ ...card, padding: 18, marginBottom: 18 }}>
-                <h2 style={sectionTitle}>Comparison table</h2>
-                <div style={{ overflowX: "auto", marginTop: 14 }}><table style={{ ...tableStyle, minWidth: 650 }}>
-                  <thead><tr><th style={thStyle}>Metric</th>{MODELS.map((m) => <th key={m.id} style={{ ...thStyle, color: m.color }}>{m.label}</th>)}</tr></thead>
-                  <tbody>{[
-                    ["Detected components", (r) => r.total],
-                    ["Unique component classes", (r) => r.bom.length],
-                    ["Measured request time", (r) => `${(r.latency_ms / 1000).toFixed(2)} s`],
-                  ].map(([label, value]) => <tr key={label}><td style={{ ...tdStyle, fontWeight: 800 }}>{label}</td>{MODELS.map((m) => <td key={m.id} style={{ ...tdStyle, fontWeight: 900, color: m.color }}>{value(compareResult.models[m.id])}</td>)}</tr>)}</tbody>
-                </table></div>
-                <p style={{ fontSize: 11, ...muted, lineHeight: 1.6, marginBottom: 0 }}>Request time is measured in the browser and includes API/network overhead. Use labelled validation data and precision/recall/mAP to compare model quality.</p>
-              </section>
-              <section style={{ ...card, padding: 18 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-                  <div><h2 style={sectionTitle}>Model-by-model annotated output</h2><p style={{ ...muted, fontSize: 12, margin: "5px 0 0" }}>Select a model below to switch to its own bounding boxes, labels, and component breakdown.</p></div>
-                  <Button onClick={() => { setBomActiveModel(compareActiveTab); setResult(compareResult.models[compareActiveTab]); setPage("bom"); }}>Open selected model BOM →</Button>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(155px,1fr))", gap: 8, marginTop: 15 }}>
-                  {MODELS.map((m) => <button key={m.id} onClick={() => selectCompareModel(m.id)} style={{ ...pillStyle(compareActiveTab === m.id, m.color), padding: "12px 10px", textAlign: "left", borderRadius: 10, minHeight: 64 }}>
-                    <span style={{ display: "block", fontWeight: 850 }}>{m.icon} {m.label}</span><span style={{ display: "block", fontSize: 11, marginTop: 5, opacity: .85 }}>{compareResult.models[m.id].total} detections · {compareResult.models[m.id].bom.length} classes</span>
-                  </button>)}
-                </div>
-                {(() => { const active = compareResult.models[compareActiveTab]; const visibleDetections = active.detections.filter((d) => d.confidence >= minConfidence && (selectedCompareClass === "ALL" || d.name === selectedCompareClass)); const visibleComponents = active.bom.filter((item) => item.averageConfidence >= minConfidence); return <>
-                  <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", marginTop: 16, marginBottom: 12, padding: "12px 14px", border: "1px solid #dbeafe", borderRadius: 11, background: "#f8fbff" }}>
-                    <div style={{ minWidth: 175, flex: "0 1 220px" }}><label htmlFor="compare-confidence-threshold" style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12, fontWeight: 800, color: "#334155" }}><span>Confidence threshold</span><strong style={{ color: "#0284c7" }}>{minConfidence}%</strong></label><input id="compare-confidence-threshold" aria-label="Compare models confidence threshold" type="range" min="0" max="95" step="1" value={minConfidence} onChange={(e) => { setMinConfidence(Number(e.target.value)); setSelectedDetectionIndex(null); }} style={{display: "block",width: "160px",maxWidth: "100%",accentColor: "#0284c7",marginTop: 8,cursor: "pointer"}} /></div>
-                    <div style={{ fontSize: 11, color: "#64748b" }}><strong style={{ color: "#0f172a" }}>{visibleDetections.length}</strong> of {active.detections.length} detections meet this threshold</div>
-                  </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.65fr) minmax(250px,0.9fr)", gap: 14, alignItems: "start" }}>
-                    <div style={{ border: "1px solid #dbe3ed", borderRadius: 12, overflow: "hidden", minWidth: 0 }}>
-                      <div style={{ padding: "12px 14px", background: "#f8fafc", borderBottom: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                        <strong style={{ fontSize: 13, color: activeModelColor(compareActiveTab) }}>{active.model_name} · Annotated image</strong><div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}><span style={{ fontSize: 11, ...muted }}>{active.total} detections</span><Button variant="secondary" onClick={() => setCompareZoom((z) => Math.max(0.5, Number((z - 0.25).toFixed(2))))} disabled={compareZoom <= 0.5}>−</Button><span style={{ minWidth: 42, textAlign: "center", fontSize: 11, fontWeight: 800, color: "#334155" }}>{Math.round(compareZoom * 100)}%</span><Button variant="secondary" onClick={() => setCompareZoom((z) => Math.min(3, Number((z + 0.25).toFixed(2))))} disabled={compareZoom >= 3}>+</Button><Button variant="secondary" onClick={() => setCompareZoom(1)} disabled={compareZoom === 1}>Reset</Button></div>
-                      </div>
-                      <div style={{ padding: 12, background: "#111827" }}>
-                        {preview ? <div style={{ width: "100%", overflow: "auto", maxHeight: 720 }}><div style={{ position: "relative", width: `${100 * compareZoom}%`, lineHeight: 0, transformOrigin: "top left" }}>
-                          <img src={preview} alt={`${active.model_name} annotated SLD`} style={{ display: "block", width: "100%", height: "auto", borderRadius: 5 }} />
-                          {visibleDetections.map((d, i) => {
-                            const isHovered = hoveredDetection === `compare-${i}` || hoveredCategory === d.name;
-                            const nearTop = d.box.y < (active.height || 1) * 0.15;
-                            return <div
-                              key={`${compareActiveTab}-${d.id}-${i}`}
-                              title={`${d.name} · ${d.confidence.toFixed(1)}%`}
-                              onMouseEnter={() => setHoveredDetection(`compare-${i}`)}
-                              onMouseLeave={() => setHoveredDetection(null)}
-                              onClick={() => { setResult(active); setSelectedDetectionIndex(i); }}
-                              role="button"
-                              tabIndex={0}
-                              onKeyDown={(e) => { if (e.key === "Enter") { setResult(active); setSelectedDetectionIndex(i); } }}
-                              style={{ position: "absolute", left: `${d.box.x / (active.width || 1) * 100}%`, top: `${d.box.y / (active.height || 1) * 100}%`, width: `${d.box.w / (active.width || 1) * 100}%`, height: `${d.box.h / (active.height || 1) * 100}%`, border: `${isHovered ? 3 : 2}px solid ${getColor(d.name)}`, background: isHovered ? `${getColor(d.name)}30` : `${getColor(d.name)}10`, boxSizing: "border-box", cursor: "pointer", zIndex: isHovered ? 30 : 2 }}>
-                              <span style={{ position: "absolute", left: -1, top: -17, maxWidth: 160, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", background: getColor(d.name), color: "#fff", fontSize: 9, lineHeight: "15px", fontWeight: 800, padding: "0 3px", borderRadius: 2, pointerEvents: "none" }}>{d.name} {d.confidence.toFixed(0)}%</span>
-                              {isHovered && <div style={{ position: "absolute", [nearTop ? "top" : "bottom"]: "calc(100% + 6px)", left: "50%", transform: "translateX(-50%)", background: "#fff", color: "#0f172a", border: `1px solid ${getColor(d.name)}`, borderRadius: 9, padding: "9px 11px", width: 210, boxShadow: "0 10px 28px #0f172a33", fontSize: 11, lineHeight: 1.4, whiteSpace: "normal", pointerEvents: "none", zIndex: 100 }}>
-                                <strong>{d.name}</strong>
-                                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, color: "#047857", fontWeight: 800 }}><span>Confidence</span><span>{d.confidence.toFixed(1)}%</span></div>
-                                <div style={{ height: 6, background: "#e2e8f0", borderRadius: 99, overflow: "hidden", marginTop: 5 }}><div style={{ height: "100%", width: `${d.confidence}%`, background: getColor(d.name), borderRadius: 99 }} /></div>
-                                <div style={{ color: "#64748b", marginTop: 6 }}>Click box to magnify symbol</div>
-                              </div>}
-                            </div>;
-                          })}
-                        </div></div> : <div style={{ color: "#cbd5e1", padding: 40, textAlign: "center", lineHeight: 1.5 }}>The source image preview is unavailable. Re-upload the drawing and run the comparison again.</div>}
-                      </div>
-                      <div style={{ padding: "10px 13px", background: "#f8fafc", fontSize: 11, color: "#64748b" }}>Boxes and labels are rendered from the selected model's detections. Switch models above to inspect their individual outputs.{selectedCompareClass !== "ALL" ? ` Showing only: ${selectedCompareClass}.` : " Click a component class in the list to show only that class on the image."}</div>
-                    </div>
-                    <div style={{ border: "1px solid #dbe3ed", borderRadius: 12, overflow: "hidden", minWidth: 0 }}>
-                      <div style={{ padding: "12px 14px", background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}><strong style={{ fontSize: 13 }}>Detected components</strong><p style={{ ...muted, fontSize: 11, margin: "4px 0 0" }}>{visibleComponents.length} component classes above threshold · {(active.latency_ms / 1000).toFixed(2)} s request time</p>{selectedCompareClass !== "ALL" && <button onClick={() => setSelectedCompareClass("ALL")} style={{ marginTop: 7, border: "1px solid #cbd5e1", background: "#fff", borderRadius: 6, padding: "4px 8px", color: "#334155", fontSize: 10, fontWeight: 800, cursor: "pointer" }}>Show all classes ✕</button>}</div>
-                      <div style={{ maxHeight: 440, overflow: "auto", padding: "4px 12px" }}>
-                        {visibleComponents.length ? visibleComponents.map((item) => <button key={item.component} type="button" onClick={() => setSelectedCompareClass((current) => current === item.component ? "ALL" : item.component)} title={selectedCompareClass === item.component ? "Click to show all component classes" : `Show only ${item.component} detections`} style={{ width: "100%", display: "flex", alignItems: "center", gap: 9, padding: "11px 0", border: 0, borderBottom: "1px solid #edf2f7", background: selectedCompareClass === item.component ? "#eff6ff" : "transparent", textAlign: "left", cursor: "pointer", borderRadius: 5 }}>
-                          <span style={{ width: 8, height: 8, flex: "0 0 8px", borderRadius: 3, background: getColor(item.component) }} />
-                          <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 11, fontWeight: 800, color: "#1e293b", lineHeight: 1.4 }}>{item.component}</div><div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#64748b", marginTop: 6 }}><span>Share of detections</span><span>{item.percentOfDetections.toFixed(1)}%</span></div><div style={{ height: 4, width: "100%", maxWidth: 140, background: "#e8edf4", borderRadius: 5, marginTop: 3, overflow: "hidden" }}><div style={{ height: "100%", width: `${item.percentOfDetections}%`, background: getColor(item.component), borderRadius: 5 }} /></div><div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#64748b", marginTop: 6 }}><span>Avg. confidence</span><strong style={{ color: "#047857" }}>{item.averageConfidence.toFixed(1)}%</strong></div><div style={{ height: 5, width: "100%", maxWidth: 140, background: "#e8edf4", borderRadius: 5, marginTop: 3, overflow: "hidden" }}><div style={{ height: "100%", width: `${item.averageConfidence}%`, background: "#059669", borderRadius: 5 }} /></div></div>
-                          <span style={{ minWidth: 27, textAlign: "center", borderRadius: 7, padding: "4px 6px", background: "#f1f5f9", color: "#0f172a", fontSize: 12, fontWeight: 900 }}>{item.quantity}</span>
-                        </button>) : <p style={{ ...muted, fontSize: 12, padding: 16 }}>No components detected by this model.</p>}
-                      </div>
-                      <div style={{ padding: 12, borderTop: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", fontSize: 12, fontWeight: 900 }}><span>Total detections</span><span style={{ color: activeModelColor(compareActiveTab) }}>{active.total}</span></div>
-                    </div>
-                  </div>
-                </>; })()}
-              </section>
-            </> : <div style={{ ...card, padding: "54px 20px", textAlign: "center" }}><h2 style={sectionTitle}>No comparison run yet</h2><p style={{ ...muted, fontSize: 13 }}>Choose an image above and run all four models to populate the comparison.</p></div>}
-          </>}
-
-          {/* BOM page: one model after individual run; four tabs after comparison */}
-          {page === "bom" && <>
-            <section style={{ ...card, padding: 18, marginBottom: 18 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-                <div><h2 style={sectionTitle}>Bill of Materials & Export</h2><p style={{ ...muted, fontSize: 12, margin: "6px 0 0" }}>{compareResult ? "Choose which model's detections and component confidence scores to inspect." : "Showing the BOM from your most recent individual model run."}</p></div>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <Button variant="secondary" onClick={() => resultForBom && downloadAnnotatedImage(resultForBom)} disabled={!resultForBom || !preview}>↓ Annotated image</Button>
-                  <Button variant="success" onClick={() => downloadCSV(resultForBom)} disabled={!resultForBom}>↓ Export BOM CSV</Button>
-                </div>
-              </div>
-              {compareResult && <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 18 }}>
-                {MODELS.map((m) => <button key={m.id} onClick={() => { setBomActiveModel(m.id); setResult(compareResult.models[m.id]); setSelectedCategoryFilter("ALL"); setMinConfidence(0); setSelectedDetectionIndex(null); }} style={pillStyle(bomActiveModel === m.id, m.color)}>{m.icon} {m.label} ({compareResult.models[m.id].total})</button>)}
-              </div>}
-            </section>
-            {resultForBom ? <section style={{ ...card, padding: 18 }}>
-              <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 18 }}>
-                <Metric label="Selected model" value={resultForBom.model_name} color="#0284c7" />
-                <Metric label="Total detections" value={resultForBom.total} color="#059669" />
-                <Metric label="Unique classes" value={resultForBom.bom.length} color="#7c3aed" />
-                <Metric label="Average confidence" value={`${(resultForBom.detections.length ? resultForBom.detections.reduce((sum, d) => sum + d.confidence, 0) / resultForBom.detections.length : 0).toFixed(1)}%`} color="#d97706" />
-              </div>
-              <div style={{ overflowX: "auto" }}><table style={{ ...tableStyle, minWidth: 720 }}>
-                <thead><tr><th style={thStyle}>Tag</th><th style={thStyle}>Component name</th><th style={{ ...thStyle, textAlign: "right" }}>Quantity</th><th style={{ ...thStyle, textAlign: "right" }}>Avg. confidence</th><th style={{ ...thStyle, textAlign: "right" }}>Share of detections</th></tr></thead>
-                <tbody>{resultForBom.bom.map((item) => <tr key={item.component} className="voltai-row">
-                  <td style={tdStyle}><span style={{ color: getColor(item.component), fontWeight: 900 }}>{item.tag}</span></td>
-                  <td style={{ ...tdStyle, fontWeight: 700 }}>{item.component}</td>
-                  <td style={{ ...tdStyle, textAlign: "right", fontWeight: 900 }}>{item.quantity}</td>
-                  <td style={{ ...tdStyle, textAlign: "right", color: "#047857", fontWeight: 800 }}>{item.averageConfidence.toFixed(2)}%</td>
-                  <td style={{ ...tdStyle, textAlign: "right" }}>{item.percentOfDetections.toFixed(1)}%</td>
-                </tr>)}
-                <tr style={{ background: "#f8fafc" }}><td style={tdStyle}>ALL</td><td style={{ ...tdStyle, fontWeight: 900 }}>TOTAL</td><td style={{ ...tdStyle, textAlign: "right", fontWeight: 900 }}>{resultForBom.total}</td><td style={{ ...tdStyle, textAlign: "right" }}>—</td><td style={{ ...tdStyle, textAlign: "right" }}>100%</td></tr></tbody>
-              </table></div>
-              <h3 style={{ ...sectionTitle, marginTop: 26, marginBottom: 10 }}>Per-component detection confidence</h3>
-              <p style={{ ...muted, fontSize: 12, marginTop: 0 }}>Each row below is one detected symbol. Confidence percentages are the values returned by the model, not an independently measured accuracy score.</p>
-              <div style={{ maxHeight: 430, overflow: "auto" }}><table style={{ ...tableStyle, minWidth: 620 }}>
-                <thead><tr><th style={thStyle}>#</th><th style={thStyle}>Component</th><th style={{ ...thStyle, textAlign: "right" }}>Confidence</th><th style={thStyle}>Coordinates (x, y)</th></tr></thead>
-                <tbody>{resultForBom.detections.map((d, i) => <tr key={`${d.id}-${i}`} className="voltai-row"><td style={tdStyle}>{i + 1}</td><td style={tdStyle}><span style={{ color: getColor(d.name), fontWeight: 800 }}>{d.name}</span></td><td style={{ ...tdStyle, textAlign: "right", color: "#047857", fontWeight: 900 }}>{d.confidence.toFixed(2)}%</td><td style={{ ...tdStyle, color: "#64748b" }}>({d.box.x.toFixed(1)}, {d.box.y.toFixed(1)})</td></tr>)}</tbody>
-              </table></div>
-            </section> : <div style={{ ...card, padding: "54px 20px", textAlign: "center" }}><h2 style={sectionTitle}>No BOM available yet</h2><p style={{ ...muted, fontSize: 13 }}>Run an individual model from Dashboard or run all four models from Compare Models first.</p><div style={{ display: "flex", justifyContent: "center", gap: 8, flexWrap: "wrap" }}><Button onClick={() => setPage("dashboard")}>Go to Dashboard</Button><Button variant="secondary" onClick={() => setPage("compare")}>Compare Models</Button></div></div>}
-          </>}
         </main>
       </div>
 
@@ -686,6 +473,10 @@ export default function App() {
       </div>}
     </div>
   );
+}
+
+function TabBar({ tabs, value, onChange }) {
+  return <div className="voltai-tabbar" style={{display:"flex",gap:5,alignItems:"center",flexWrap:"wrap",padding:5,marginBottom:18,background:"rgba(232,238,247,.82)",border:"1px solid #e0e7f1",borderRadius:16,width:"fit-content",maxWidth:"100%",boxShadow:"0 5px 18px rgba(15,23,42,.045), inset 0 1px 2px rgba(15,23,42,.025)"}}>{tabs.map(tab=><button key={tab.id} type="button" onClick={()=>onChange(tab.id)} style={{border: value===tab.id?"1px solid rgba(255,255,255,.9)":"1px solid transparent",borderRadius:12,padding:"10px 17px",background:value===tab.id?"#ffffff":"transparent",color:value===tab.id?"#075985":"#64748b",fontSize:12,fontWeight:value===tab.id?850:700,cursor:"pointer",boxShadow:value===tab.id?"0 3px 10px rgba(15,23,42,.09), inset 0 0 0 1px #e6edf6":"none",transition:"all 160ms ease"}}>{tab.label}</button>)}</div>;
 }
 
 function Metric({ label, value, color }) {
