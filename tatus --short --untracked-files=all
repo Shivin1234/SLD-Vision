@@ -1,0 +1,14 @@
+warning: in the working copy of 'frontend/vite.config.js', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/frontend/vite.config.js b/frontend/vite.config.js[m
+[1mindex cc5372e..99f2070 100644[m
+[1m--- a/frontend/vite.config.js[m
+[1m+++ b/frontend/vite.config.js[m
+[36m@@ -8,7 +8,7 @@[m [mexport default defineConfig({[m
+     port: 5173,[m
+     proxy: {[m
+       '/api': {[m
+[31m-        target: 'http://127.0.0.1:8080',[m
+[32m+[m[32m        target: 'http://127.0.0.1:8000',[m
+         changeOrigin: true,[m
+       }[m
+     }[m
