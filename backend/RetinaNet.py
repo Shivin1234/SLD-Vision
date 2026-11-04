@@ -369,4 +369,3 @@ def draw_detections(
         )
 
     return annotated
-
