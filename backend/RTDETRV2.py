@@ -53,10 +53,15 @@ CLASS_NAMES = {
 # 1. RT-DETRv2 LOADER & TILED INFERENCE (Untouched & Exact)
 # -------------------------------------------------------------
 class RTDETRWrapper(nn.Module):
-    def __init__(self):
+    def __init__(self, checkpoint_path=None, config_path=None):
         super().__init__()
-        ckpt_path = os.path.join(CURRENT_DIR, "models", "rtdetrv2_sld.pth")
-        cfg_path = os.path.join(CURRENT_DIR, "config_used.yml")
+
+        ckpt_path = checkpoint_path or os.path.join(
+            CURRENT_DIR, "models", "rtdetrv2_sld.pth"
+        )
+        cfg_path = config_path or os.path.join(
+            CURRENT_DIR, "config_used.yml"
+        )
         
         assert os.path.exists(ckpt_path), f"Weight file {ckpt_path} not found!"
         assert os.path.exists(cfg_path), f"Config file {cfg_path} not found!"
@@ -81,14 +86,20 @@ class RTDETRWrapper(nn.Module):
         return {"boxes": boxes, "scores": scores, "labels": labels}
 
 
-def load_rtdetrv2():
+def load_rtdetrv2(checkpoint_path=None, config_path=None):
     print("Loading RT-DETRv2 model using YAMLConfig...")
+
     try:
-        model = RTDETRWrapper().to(DEVICE).eval()
+        model = RTDETRWrapper(
+            checkpoint_path=checkpoint_path,
+            config_path=config_path
+        ).to(DEVICE).eval()
+
         print("RT-DETRv2 loaded successfully!")
         return model
-    except Exception as e:
-        print(f"❌ CRITICAL Error loading RT-DETRv2:")
+
+    except Exception:
+        print("❌ CRITICAL Error loading RT-DETRv2:")
         traceback.print_exc()
         return None
 
@@ -174,4 +185,3 @@ def run_rtdetrv2_inference(model, image: Image.Image, threshold: float = 0.3, zo
             "box": [round(coord, 1) for coord in b]
         })
     return {"detections": detections}
-
