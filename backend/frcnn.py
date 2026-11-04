@@ -25,9 +25,11 @@ CLASS_NAMES = [
 ]
 
 
-def load_model():
-    if not MODEL_PATH.exists():
-        raise FileNotFoundError(f"Checkpoint not found: {MODEL_PATH}")
+def load_model(checkpoint_path=MODEL_PATH):
+    checkpoint_path = Path(checkpoint_path)
+
+    if not checkpoint_path.exists():
+        raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
 
     model = fasterrcnn_resnet50_fpn(
         weights=None,
@@ -42,7 +44,7 @@ def load_model():
     )
 
     state_dict = torch.load(
-        MODEL_PATH,
+        checkpoint_path,
         map_location="cpu",
         weights_only=True,
     )
@@ -98,7 +100,7 @@ def predict_image_tiled(
     model,
     image: Image.Image,
     confidence_threshold: float = 0.05,
-    tile_size: int = 800,
+    tile_size: int = 640,
     overlap: float = 0.2,
     iou_threshold: float = 0.5,
 ):
@@ -195,5 +197,4 @@ if __name__ == "__main__":
 
     for label_id, class_name in enumerate(CLASS_NAMES):
         print(f"{label_id}: {class_name}")
-
 
