@@ -1,3 +1,4 @@
+
 # ==============================================================================
 # SLD CAD AI BACKEND (FastAPI + RT-DETR SAHI Sliced Inference)
 # ==============================================================================
@@ -45,23 +46,42 @@ SHORT_TAGS = {
 # ------------------------------------------------------------------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+# Checkpoint paths
 RTDETR_MODEL_PATH = os.path.join(BASE_DIR, "models", "rtdetr_sld.pt")
+NEW_RTDETR_MODEL_PATH = os.path.join(BASE_DIR, "models", "best (5).pt")
 
 print(f"[INFO] Computing device: {str(device).upper()}")
 
-rtdetr_model = None
-if os.path.exists(RTDETR_MODEL_PATH):
-    print(f"[INFO] Loading RT-DETR model from {RTDETR_MODEL_PATH}...")
-    rtdetr_model = AutoDetectionModel.from_pretrained(
+
+def load_rtdetr_model(checkpoint_path):
+    if not os.path.exists(checkpoint_path):
+        raise FileNotFoundError(
+            f"RT-DETR checkpoint not found: {checkpoint_path}"
+        )
+
+    print(f"[INFO] Loading RT-DETR model from {checkpoint_path}...")
+
+    model = AutoDetectionModel.from_pretrained(
         model_type="yolov8",
-        model_path=RTDETR_MODEL_PATH,
+        model_path=checkpoint_path,
         confidence_threshold=0.30,
         device=str(device)
     )
-    print("[OK] RT-DETR Model loaded successfully!")
-else:
-    print(f"[WARN] RT-DETR checkpoint not found at {RTDETR_MODEL_PATH}")
 
+    print(f"[OK] RT-DETR model loaded: {os.path.basename(checkpoint_path)}")
+
+    return model
+
+
+# Load the old model as the default
+rtdetr_model = None
+
+if os.path.exists(RTDETR_MODEL_PATH):
+    rtdetr_model = load_rtdetr_model(RTDETR_MODEL_PATH)
+else:
+    print(f"[WARN] Old RT-DETR checkpoint not found: {RTDETR_MODEL_PATH}")
+
+    
 # ------------------------------------------------------------------------------
 # 3. Core Sliced Inference Engine (SAHI)
 # ------------------------------------------------------------------------------
@@ -194,4 +214,3 @@ def detect_symbols(file: UploadFile = File(...)):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8080, reload=True)
-
