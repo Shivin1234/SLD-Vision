@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import Dashboard from "./pages/Dashboard";
 import CompareModels from "./pages/CompareModels";
 import History from "./pages/History";
+import OldVsNew from "./pages/OldVsNew";
 
 const MODELS = [
   { id: "rtdetrv2", label: "RT-DETRv2", color: "#0284c7", icon: "⚡", description: "Transformer detector" },
@@ -202,58 +203,280 @@ export default function App() {
     resetViewState();
   };
 
-  const runModel = async (modelId, imageInfo) => {
-    const formData = new FormData();
-    formData.append("file", file);
-    const startedAt = performance.now();
-    const response = await fetch(`/api/predict?model_type=${encodeURIComponent(modelId)}`, {
-      method: "POST", body: formData
-    });
-    if (!response.ok) {
-      const body = await response.text();
-      throw new Error(`${MODELS.find((m) => m.id === modelId)?.label || modelId}: ${response.status} ${body}`);
+const createAnalysisSession = async (analysisType, expectedModelIds) => {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("analysis_type", analysisType);
+  formData.append("expected_model_ids", JSON.stringify(expectedModelIds));
+
+  const response = await fetch("/api/analysis-sessions", {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(
+      `Could not create analysis session: ${response.status} ${body}`
+    );
+  }
+
+  const data = await response.json();
+  return data.analysis_id;
+};
+
+
+
+  const runModel = async (modelId, imageInfo, analysisId = null) => {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const startedAt = performance.now();
+
+  const response = await fetch(
+    `/api/predict?model_type=${encodeURIComponent(modelId)}${
+      analysisId ? `&analysis_id=${encodeURIComponent(analysisId)}` : ""
+    }`,
+    {
+      method: "POST",
+      body: formData
     }
-    const data = await response.json();
-    return normalizeResult(data, file.name, imageInfo.width, imageInfo.height, performance.now() - startedAt, modelId);
-  };
+  );
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(
+      `${MODELS.find((m) => m.id === modelId)?.label || modelId}: ${response.status} ${body}`
+    );
+  }
+
+  const data = await response.json();
+
+  return normalizeResult(
+    data,
+    file.name,
+    imageInfo.width,
+    imageInfo.height,
+    performance.now() - startedAt,
+    modelId
+  );
+};
 
   const handleRunDetection = async (modeOverride = null) => {
-    const modeToRun = modeOverride || selectedModel;
-    if (!file) {
-      alert("Please choose an SLD image first.");
-      return;
-    }
-    setLoading(true);
-    try {
-      const imageInfo = await new Promise((resolve, reject) => {
-        const img = new Image();
-        img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
-        img.onerror = () => reject(new Error("Could not read the selected image."));
-        img.src = URL.createObjectURL(file);
+  const modeToRun = modeOverride || selectedModel;
+
+  if (!file) {
+    alert("Please choose an SLD image first.");
+    return;
+  }
+
+  setLoading(true);
+
+  try {
+    const imageInfo = await new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve({
+        width: img.naturalWidth,
+        height: img.naturalHeight
       });
-      if (modeToRun === "compare") {
-        const entries = await Promise.all(MODELS.map(async (m) => [m.id, await runModel(m.id, imageInfo)]));
-        const models = Object.fromEntries(entries);
-        setCompareResult({ fileName: file.name, width: imageInfo.width, height: imageInfo.height, models });
-        setCompareActiveTab("rtdetrv2");
-        setBomActiveModel("rtdetrv2");
-        setResult(models.rtdetrv2);
-        setPage("compare");
-      } else {
-        const modelResult = await runModel(selectedModel, imageInfo);
-        setResult(modelResult);
-        setCompareResult(null);
-        setBomActiveModel(selectedModel);
-        setPage("dashboard");
+      img.onerror = () => reject(new Error("Could not read the selected image."));
+      img.src = URL.createObjectURL(file);
+    });
+
+    // Create one history session for this analysis.
+    const isComparison = modeToRun === "compare";
+
+    const expectedModelIds = isComparison
+      ? MODELS.map((m) => m.id)
+      : [selectedModel];
+
+    const analysisId = await createAnalysisSession(
+      isComparison ? "comparison" : "single",
+      expectedModelIds
+    );
+
+    if (isComparison) {
+      const entries = await Promise.all(
+        MODELS.map(async (m) => [
+          m.id,
+          await runModel(m.id, imageInfo, analysisId)
+        ])
+      );
+
+      const models = Object.fromEntries(entries);
+
+      // Save the completed comparison session.
+      const finalizeResponse = await fetch(
+        `/api/analysis-sessions/${analysisId}/finalize`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ models })
+        }
+      );
+
+      if (!finalizeResponse.ok) {
+        throw new Error("Could not finalize comparison history session.");
       }
-      resetViewState();
-    } catch (error) {
-      console.error("Detection request failed:", error);
-      alert(`Detection failed: ${error.message}\n\nCheck that the FastAPI backend is running and the Vite proxy points to it.`);
-    } finally {
-      setLoading(false);
+
+      setCompareResult({
+        fileName: file.name,
+        width: imageInfo.width,
+        height: imageInfo.height,
+        models
+      });
+
+      setCompareActiveTab("rtdetrv2");
+      setBomActiveModel("rtdetrv2");
+      setResult(models.rtdetrv2);
+      setPage("compare");
+
+    } else {
+      const modelResult = await runModel(
+        selectedModel,
+        imageInfo,
+        analysisId
+      );
+
+      // Save the completed single-model session.
+      const finalizeResponse = await fetch(
+        `/api/analysis-sessions/${analysisId}/finalize`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            models: {
+              [selectedModel]: modelResult
+            }
+          })
+        }
+      );
+
+      if (!finalizeResponse.ok) {
+        throw new Error("Could not finalize analysis history session.");
+      }
+
+      setResult(modelResult);
+      setCompareResult(null);
+      setBomActiveModel(selectedModel);
+      setPage("dashboard");
     }
-  };
+
+    resetViewState();
+
+  } catch (error) {
+    console.error("Detection request failed:", error);
+    alert(
+      `Detection failed: ${error.message}\n\nCheck that the FastAPI backend is running and the Vite proxy points to it.`
+    );
+  } finally {
+    setLoading(false);
+  }
+};
+
+
+
+const handleRestoreHistory = async (item) => {
+  try {
+    // Fetch the complete saved analysis session.
+    const response = await fetch(`/api/history/${item.id}`);
+
+    if (!response.ok) {
+      throw new Error("Could not fetch saved analysis.");
+    }
+
+    const session = await response.json();
+
+    // Fetch the original uploaded image.
+    const imageResponse = await fetch(session.original_image_url);
+
+    if (!imageResponse.ok) {
+      throw new Error("Could not fetch the original image.");
+    }
+
+    const imageBlob = await imageResponse.blob();
+
+    const restoredFile = new File(
+      [imageBlob],
+      session.file_name || "restored_sld.png",
+      {
+        type: imageBlob.type.startsWith("image/")
+          ? imageBlob.type
+          : "image/png"
+      }
+    );
+
+    const restoredPreview = URL.createObjectURL(restoredFile);
+
+    // Replace the currently displayed image.
+    if (preview) {
+      URL.revokeObjectURL(preview);
+    }
+
+    setFile(restoredFile);
+    setPreview(restoredPreview);
+
+    // Restore saved model results.
+    const savedModels = session.models || {};
+    const modelIds = Object.keys(savedModels);
+
+    if (modelIds.length === 0) {
+      throw new Error("No saved model results found in this session.");
+    }
+
+    const restoredModels = Object.fromEntries(
+      Object.entries(savedModels).map(([modelId, modelResult]) => [
+        modelId,
+        {
+          ...modelResult,
+          fileName: modelResult.fileName || session.file_name,
+          modelId: modelResult.modelId || modelId
+        }
+      ])
+    );
+
+    const isComparison =
+      session.analysis_type === "comparison" ||
+      session.analysis_type === "compare";
+
+    const firstModelId = modelIds.includes("rtdetrv2")
+      ? "rtdetrv2"
+      : modelIds[0];
+
+    if (isComparison) {
+      setCompareResult({
+        fileName: session.file_name,
+        width: session.width,
+        height: session.height,
+        models: restoredModels
+      });
+
+      setCompareActiveTab(firstModelId);
+      setBomActiveModel(firstModelId);
+      setResult(restoredModels[firstModelId]);
+      setPage("compare");
+    } else {
+      const modelId = modelIds[0];
+
+      setSelectedModel(modelId);
+      setResult(restoredModels[modelId]);
+      setCompareResult(null);
+      setBomActiveModel(modelId);
+      setPage("dashboard");
+    }
+
+    resetViewState();
+
+  } catch (error) {
+    console.error("History restoration failed:", error);
+    alert(`Could not restore analysis: ${error.message}`);
+  }
+};
+
 
   const selectCompareModel = (modelId) => {
     setSelectedCompareClass("ALL");
@@ -324,12 +547,21 @@ export default function App() {
   };
 
   const resultForBom = compareResult ? (compareResult.models[bomActiveModel] || result) : result;
-  const pageTitle = page === "dashboard" ? "Detection workspace" : page === "compare" ? "Model laboratory" : "Detection history";
-  const pageSubtitle = page === "dashboard"
-    ? "Inspect electrical symbols, confidence scores, and bill of materials."
-    : page === "compare"
-      ? "Benchmark four detectors against the same single-line diagram."
-      : "Review previous analyses saved by the backend database.";
+  const pageTitle =
+  page === "dashboard" ? "Detection workspace" :
+  page === "compare" ? "Model laboratory" :
+  page === "oldnew" ? "Old vs New Comparison" :
+  "Detection history";
+
+  const pageSubtitle =
+    page === "dashboard"
+      ? "Inspect electrical symbols, confidence scores, and bill of materials."
+      : page === "compare"
+        ? "Benchmark four detectors against the same single-line diagram."
+        : page === "oldnew"
+          ? "Compare original and newly trained model checkpoints."
+          : "Review previous analyses saved by the backend database.";
+
 
   const card = { background: "rgba(255,255,255,0.96)", border: "1px solid #e5eaf2", borderRadius: 18, boxShadow: "0 8px 24px rgba(15,23,42,0.045), 0 1px 2px rgba(15,23,42,0.025)" };
   const muted = { color: "#64748b" };
@@ -338,7 +570,7 @@ export default function App() {
     MODELS, getColor, activeModelColor, Button, TabBar, Metric, pillStyle,
     card, muted, sectionTitle, tableStyle, thStyle, tdStyle,
     page, setPage,
-    historyItems, historyLoading, historyError, setHistoryError,
+    historyItems, historyLoading, historyError, setHistoryError,onRestoreHistory: handleRestoreHistory,
     dashboardView, setDashboardView, compareView, setCompareView,
     file, preview, loading, selectedModel, setSelectedModel,
     result, setResult, compareResult, setCompareResult,
@@ -398,6 +630,7 @@ export default function App() {
           {[
             { id: "dashboard", icon: "▦", label: "Dashboard" },
             { id: "compare", icon: "⇄", label: "Compare Models" },
+            { id: "oldnew", icon: "⚖", label: "Old vs New" },
             { id: "history", icon: "◷", label: "History" },
           ].map((item) => (
             <button key={item.id} className="voltai-nav" onClick={() => setPage(item.id)} style={{
@@ -437,6 +670,7 @@ export default function App() {
           {/* Page content is split into dedicated components; all behavior remains in App.jsx. */}
           {page === "dashboard" && <Dashboard {...pageProps} />}
           {page === "compare" && <CompareModels {...pageProps} />}
+          {page === "oldnew" && <OldVsNew file={file} />}
           {page === "history" && <History {...pageProps} />}
 
         </main>
